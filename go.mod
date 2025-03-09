@@ -1,4 +1,4 @@
-module github.com/maddsua/golib
+module github.com/maddsua/goutils
 
 go 1.23.2
 

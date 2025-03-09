@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maddsua/golib/cache"
+	"github.com/maddsua/goutils/cache"
 )
 
 func TestInmemory_1(t *testing.T) {

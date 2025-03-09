@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/maddsua/golib/cache"
+	"github.com/maddsua/goutils/cache"
 )
 
 func NewInmemory() *inmemory {

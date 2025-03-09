@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maddsua/golib/ratelimiter"
+	"github.com/maddsua/goutils/ratelimiter"
 )
 
 func TestInmem_1(t *testing.T) {
