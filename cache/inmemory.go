@@ -1,11 +1,17 @@
 package cache
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
 
+type StorageTyper interface {
+	StorageType() string
+}
+
 const NeverExpire = time.Duration(0)
+const ExpireNow = time.Duration(-1)
 
 type InMemoryCache struct {
 	entries     map[string]*InmemoryEntry
@@ -14,12 +20,27 @@ type InMemoryCache struct {
 }
 
 type InmemoryEntry struct {
-	Val any
-	Exp time.Time
+	val any
+	exp time.Time
 }
 
-func (this *InmemoryEntry) IsExpired() bool {
-	return !this.Exp.IsZero() && this.Exp.Before(time.Now())
+func (this *InmemoryEntry) isExpired() bool {
+	return !this.exp.IsZero() && this.exp.Before(time.Now())
+}
+
+func (this *InmemoryEntry) expire(ttl time.Duration) {
+
+	if ttl <= ExpireNow {
+		this.exp = time.Unix(1, 0)
+		return
+	}
+
+	if ttl == NeverExpire {
+		this.exp = time.Time{}
+		return
+	}
+
+	this.exp = time.Now().Add(ttl)
 }
 
 func (this *InMemoryCache) subtleInit() {
@@ -28,11 +49,15 @@ func (this *InMemoryCache) subtleInit() {
 	}
 }
 
-func (this *InMemoryCache) Type() string {
+func (this *InMemoryCache) StorageType() string {
 	return "mem"
 }
 
-func (this *InMemoryCache) Set(key string, val any, ttl time.Duration) {
+func (this *InMemoryCache) Set(key string, val any, ttl time.Duration) error {
+
+	if ttl <= ExpireNow {
+		return errors.New("cannot set an entry with ttl in past")
+	}
 
 	this.subtleInit()
 
@@ -44,15 +69,15 @@ func (this *InMemoryCache) Set(key string, val any, ttl time.Duration) {
 		go this.cleanupRoutine(now)
 	}
 
-	var expires time.Time
-	if ttl > NeverExpire {
-		expires = time.Now().Add(ttl)
+	entry := &InmemoryEntry{
+		val: val,
 	}
 
-	this.entries[key] = &InmemoryEntry{
-		Val: val,
-		Exp: expires,
-	}
+	entry.expire(ttl)
+
+	this.entries[key] = entry
+
+	return nil
 }
 
 func (this *InMemoryCache) Get(key string) (any, bool) {
@@ -62,21 +87,11 @@ func (this *InMemoryCache) Get(key string) (any, bool) {
 	this.mtx.Lock()
 	defer this.mtx.Unlock()
 
-	if entry, has := this.entries[key]; has && !entry.IsExpired() {
-		return entry.Val, true
+	if entry, has := this.entries[key]; has && !entry.isExpired() {
+		return entry.val, true
 	}
 
 	return nil, false
-}
-
-func (this *InMemoryCache) GetEntry(key string) *InmemoryEntry {
-
-	this.subtleInit()
-
-	this.mtx.Lock()
-	defer this.mtx.Unlock()
-
-	return this.entries[key]
 }
 
 func (this *InMemoryCache) cleanupRoutine(now time.Time) {
@@ -85,10 +100,42 @@ func (this *InMemoryCache) cleanupRoutine(now time.Time) {
 	defer this.mtx.Unlock()
 
 	for key, entry := range this.entries {
-		if entry.IsExpired() {
+		if entry.isExpired() {
 			delete(this.entries, key)
 		}
 	}
 
 	this.nextCleanup = now.Add(time.Minute)
+}
+
+func (this *InMemoryCache) Expire(key string, ttl time.Duration) bool {
+
+	this.subtleInit()
+
+	this.mtx.Lock()
+	defer this.mtx.Unlock()
+
+	entry := this.entries[key]
+	if entry == nil {
+		return false
+	}
+
+	entry.expire(ttl)
+
+	return true
+}
+
+func (this *InMemoryCache) TTL(key string) (time.Duration, bool) {
+
+	this.subtleInit()
+
+	this.mtx.Lock()
+	defer this.mtx.Unlock()
+
+	entry := this.entries[key]
+	if entry == nil || entry.exp.IsZero() {
+		return 0, false
+	}
+
+	return time.Until(entry.exp), true
 }
