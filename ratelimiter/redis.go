@@ -8,12 +8,18 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func NewRedis(client redis.UniversalClient) *redislimiter {
+func NewRedis(client RedisThinClient) *redislimiter {
 	return &redislimiter{redis: client}
 }
 
+type RedisThinClient interface {
+	Get(ctx context.Context, key string) *redis.StringCmd
+	Set(ctx context.Context, key string, value any, expiration time.Duration) *redis.StatusCmd
+	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
+}
+
 type redislimiter struct {
-	redis redis.UniversalClient
+	redis RedisThinClient
 }
 
 func (this *redislimiter) Type() string {
